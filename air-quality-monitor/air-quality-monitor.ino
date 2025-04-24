@@ -1,15 +1,40 @@
-/*****************************************************************************************************************
-   
-   Air Quality Terminal 
-   Original Author: Salman Faris
-   Original Date: 01/09/2020
-   Last Updates: 04/25/2025
-
-   Required Libraries:
-   - <Multichannel_Gas_GMXXX.h>: https://github.com/Seeed-Studio/Seeed_Multichannel_Gas_Sensor/archive/master.zip
-   - <DHT.h>: https://github.com/Seeed-Studio/Grove_Temperature_And_Humidity_Sensor/archive/refs/heads/master.zip
-
-*****************************************************************************************************************/
+/**
+ * @file air-quality-monitor.ino
+ * @brief Air Quality Monitoring System for Wio Terminal
+ * 
+ * This program monitors air quality using various sensors and displays the data on a TFT screen.
+ * It measures VOC, CO, NO2, Ethyl (C2H5CH), temperature, and humidity levels.
+ * 
+ * @author Salman Faris
+ * @date Original: 01/09/2020, Last Updated: 04/25/2025
+ * 
+ * @details
+ * - The program uses the Seeed Multichannel Gas Sensor library for gas measurements.
+ * - The DHT library is used for temperature and humidity readings.
+ * - Data is displayed on a TFT screen using the TFT_eSPI library.
+ * - Sensor values are constrained to reasonable ranges for display purposes.
+ * - The display layout is organized into labeled sections for each sensor.
+ * 
+ * @dependencies
+ * - <Multichannel_Gas_GMXXX.h>: https://github.com/Seeed-Studio/Seeed_Multichannel_Gas_Sensor/archive/master.zip
+ * - <DHT.h>: https://github.com/Seeed-Studio/Grove_Temperature_And_Humidity_Sensor/archive/refs/heads/master.zip
+ * - <TFT_eSPI.h>: https://github.com/Bodmer/TFT_eSPI
+ * 
+ * @hardware
+ * - Wio Terminal
+ * - Multichannel Gas Sensor
+ * - DHT11 Temperature and Humidity Sensor
+ * 
+ * @functions
+ * - setup(): Initializes the sensors, display, and layout.
+ * - loop(): Reads sensor data, processes it, and updates the display.
+ * - setupDisplayLayout(): Configures the layout of the TFT screen.
+ * - drawSensorBox(): Draws labeled boxes for each sensor on the display.
+ * - displayData(): Displays sensor readings on the screen and logs them to the serial monitor.
+ * 
+ * @license
+ * This code is provided as-is without any warranty. Use at your own risk.
+ */
 
 #include <TFT_eSPI.h>
 #include <Multichannel_Gas_GMXXX.h> 
