@@ -33,3 +33,8 @@ This simple solution will stream the sensor telemetry from the Wio Terminal to A
 The telemetry from IoT hub will be processed in real-time by Azure Stream Analytics and sent to Power BI to create a real time dashboard showing the telemetry from the sensors.
 
 Additionally, we will send the telementry to Azure Blob Storage for long term cold storage and analytics processing.
+
+## Source Code
+I have decided to build and distribute this project using the Arduino IDE as it is one of the most popular programming environments for basic IoT projects. You can use this code and pull it into other solutions like PlatformIO and Visual Studio Code. All libraries reequired for this project to work are documented in the code with links on where to find the libraries if the are not included in the Arduino IDE.
+
+At the time publishing this project, I am using Arduino IDE v2.x and have not tested it with Arduino IDE 1.8.x.
