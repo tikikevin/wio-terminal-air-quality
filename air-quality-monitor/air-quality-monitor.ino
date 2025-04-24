@@ -14,7 +14,7 @@
 #include <TFT_eSPI.h>
 #include <Multichannel_Gas_GMXXX.h> 
 #include <Wire.h>
-#include "DHT.h"
+#include <DHT.h>
 
 // Gas sensor object (I2C communication)
 GAS_GMXXX<TwoWire> gas;
