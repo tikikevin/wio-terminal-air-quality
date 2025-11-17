@@ -57,56 +57,125 @@ unsigned int no2, c2h5ch, voc, co;
 DHT dht(DHTPIN, DHTTYPE);
 
 void setup() {
-  // Initialize serial communication
-  Serial.begin(115200);
+  // Configuration constants
+  constexpr uint32_t SERIAL_BAUD = 115200UL;
+  constexpr uint8_t GAS_I2C_ADDR = 0x08;
+  constexpr unsigned long SERIAL_TIMEOUT_MS = 2000;
 
-  // Initialize TFT display
+  // Initialize serial for debugging (wait a short time for USB-serial to enumerate)
+  Serial.begin(SERIAL_BAUD);
+  unsigned long start = millis();
+  while (!Serial && (millis() - start) < SERIAL_TIMEOUT_MS) {
+    delay(10);
+  }
+  Serial.println("Initializing...");
+
+  // Initialize I2C and set a safe clock frequency
+  Wire.begin();
+  Wire.setClock(100000); // 100 kHz
+
+  // Initialize TFT display and clear screen
   tft.begin();
   tft.setRotation(3);
+  tft.fillScreen(TFT_BLACK);
 
-  // Initialize gas sensor
-  gas.begin(Wire, 0x08);
+  // Initialize gas sensor (I2C). Allow time for power-up and take a few
+  // initial/discarded readings to let the sensor stabilize.
+  gas.begin(Wire, GAS_I2C_ADDR);
+  delay(200); // sensor power-up
+  for (int i = 0; i < 3; ++i) {
+    (void)gas.getGM502B();
+    (void)gas.getGM702B();
+    (void)gas.getGM102B();
+    (void)gas.getGM302B();
+    delay(100);
+  }
+  Serial.println("Gas sensor initialized (warm-up complete)");
 
   // Initialize DHT sensor
   dht.begin();
+  Serial.println("DHT sensor initialized");
 
-  // Setup display layout
+  // Prepare display layout (static UI elements)
   setupDisplayLayout();
+
+  Serial.println("Setup complete");
 }
 
+/**
+ * loop()
+ * - Non-blocking periodic sensor read + display update.
+ * - Uses millis() to avoid blocking delay(), validates DHT reads,
+ *   constrains gas sensor values to a safe display range (0-999 ppm),
+ *   and logs sensor read failures to Serial.
+ */
 void loop() {
-  // Read and display VOC data
-  voc = gas.getGM502B();
-  voc = constrain(voc, 0, 999);  // Limit value to 999 ppm
-  displayData("VOC", voc, 15, 100);
+  constexpr unsigned long UPDATE_INTERVAL_MS = 5000UL; // update every 5 seconds
+  static unsigned long lastUpdate = 0;
+  unsigned long now = millis();
 
-  // Read and display CO data
-  co = gas.getGM702B();
-  co = constrain(co, 0, 999);  // Limit value to 999 ppm
-  displayData("CO", co, 15, 185);
+  // Return early if it's not time to update yet (non-blocking)
+  if (now - lastUpdate < UPDATE_INTERVAL_MS) {
+    return;
+  }
+  lastUpdate = now;
 
-  // Read and display temperature
-  float temperature = dht.readTemperature();
-  int tempInt = static_cast<int>(temperature);  // Convert to integer
-  displayData("Temp", tempInt, (tft.width() / 2) - 1, 100);
+  // --- VOC (GM502B) ---
+  {
+    unsigned int raw = gas.getGM502B();
+    unsigned int value = static_cast<unsigned int>(constrain(raw, 0u, 999u));
+    displayData("VOC", value, 15, 100);
+  }
 
-  // Read and display NO2 data
-  no2 = gas.getGM102B();
-  no2 = constrain(no2, 0, 999);  // Limit value to 999 ppm
-  displayData("NO2", no2, ((tft.width() / 2) + (tft.width() / 2) / 2), 97);
+  // --- CO (GM702B) ---
+  {
+    unsigned int raw = gas.getGM702B();
+    unsigned int value = static_cast<unsigned int>(constrain(raw, 0u, 999u));
+    displayData("CO", value, 15, 185);
+  }
 
-  // Read and display humidity
-  float humidity = dht.readHumidity();
-  humidity = constrain(humidity, 0, 99);  // Limit value to 99%
-  displayData("Humi", static_cast<int>(humidity), (tft.width() / 2) - 1, (tft.height() / 2) + 67);
+  // --- Temperature (DHT) ---
+  {
+    float temperature = dht.readTemperature();
+    int tempInt;
+    if (isnan(temperature)) {
+      Serial.println("Warning: Temperature read failed (NaN)");
+      tempInt = 0; // fallback display value
+    } else {
+      tempInt = static_cast<int>(round(temperature));
+    }
+    displayData("Temp", tempInt, (tft.width() / 2) - 1, 100);
+  }
 
-  // Read and display Ethyl (C2H5CH) data
-  c2h5ch = gas.getGM302B();
-  c2h5ch = constrain(c2h5ch, 0, 999);  // Limit value to 999 ppm
-  displayData("Ethyl", c2h5ch, ((tft.width() / 2) + (tft.width() / 2) / 2), (tft.height() / 2) + 67);
+  // --- NO2 (GM102B) ---
+  {
+    unsigned int raw = gas.getGM102B();
+    unsigned int value = static_cast<unsigned int>(constrain(raw, 0u, 999u));
+    displayData("NO2", value, ((tft.width() / 2) + (tft.width() / 2) / 2), 97);
+  }
 
-  // Delay for 5 seconds before the next update
-  delay(5000);
+  // --- Humidity (DHT) ---
+  {
+    float humidity = dht.readHumidity();
+    int humInt;
+    if (isnan(humidity)) {
+      Serial.println("Warning: Humidity read failed (NaN)");
+      humInt = 0; // fallback display value
+    } else {
+      humInt = static_cast<int>(round(constrain(humidity, 0.0f, 99.0f)));
+    }
+    displayData("Humi", humInt, (tft.width() / 2) - 1, (tft.height() / 2) + 67);
+  }
+
+  // --- Ethyl (GM302B) ---
+  {
+    unsigned int raw = gas.getGM302B();
+    unsigned int value = static_cast<unsigned int>(constrain(raw, 0u, 999u));
+    displayData("Ethyl", value, ((tft.width() / 2) + (tft.width() / 2) / 2), (tft.height() / 2) + 67);
+  }
+
+  // Yield to background tasks (WiFi/USB/etc.) if available
+  yield();
 }
 
 // Function to set up the display layout
@@ -127,9 +196,9 @@ void setupDisplayLayout() {
   // Draw rectangles and labels for each sensor
   drawSensorBox(5, 60, (tft.width() / 2) - 20, tft.height() - 65, TFT_WHITE, "VOC", "ppm", 7, 65, 55, 108);
   drawSensorBox(5, 150, (tft.width() / 2) - 20, tft.height() - 65, TFT_WHITE, "CO", "ppm", 7, 150, 55, 193);
-  drawSensorBox((tft.width() / 2) - 10, 60, (tft.width() / 2) / 2, (tft.height() - 65) / 2, TFT_BLUE, "Temp", "C", (tft.width() / 2) - 1, 70, (tft.width() / 2) + 40, 100);
+  drawSensorBox((tft.width() / 2) - 10, 60, (tft.width() / 2) / 2, (tft.height() - 65) / 2, TFT_BLUE, "Temp", "C", (tft.width() / 2) - 1, 70, (tft.width() / 2) + 45, 100);
   drawSensorBox(((tft.width() / 2) + (tft.width() / 2) / 2) - 5, 60, (tft.width() / 2) / 2, (tft.height() - 65) / 2, TFT_BLUE, "NO2", "ppm", ((tft.width() / 2) + (tft.width() / 2) / 2), 70, ((tft.width() / 2) + (tft.width() / 2) / 2) + 30, 120);
-  drawSensorBox((tft.width() / 2) - 10, (tft.height() / 2) + 30, (tft.width() / 2) / 2, (tft.height() - 65) / 2, TFT_BLUE, "Humi", "%", (tft.width() / 2) - 1, (tft.height() / 2) + 40, (tft.width() / 2) + 30, (tft.height() / 2) + 70);
+  drawSensorBox((tft.width() / 2) - 10, (tft.height() / 2) + 30, (tft.width() / 2) / 2, (tft.height() - 65) / 2, TFT_BLUE, "Humi", "%", (tft.width() / 2) - 1, (tft.height() / 2) + 40, (tft.width() / 2) + 45, (tft.height() / 2) + 70);
   drawSensorBox(((tft.width() / 2) + (tft.width() / 2) / 2) - 5, (tft.height() / 2) + 30, (tft.width() / 2) / 2, (tft.height() - 65) / 2, TFT_BLUE, "Ethyl", "ppm", ((tft.width() / 2) + (tft.width() / 2) / 2), (tft.height() / 2) + 40, ((tft.width() / 2) + (tft.width() / 2) / 2) + 30, (tft.height() / 2) + 90);
 }
 
